@@ -3,5 +3,8 @@ package main
 import "fmt"
 
 func main() {
-	fmt.Println("Hello")
+	var username string = "0x"
+	var passwod int = 02002
+
+	fmt.Println("Auth", username, " : ", passwod)
 }
