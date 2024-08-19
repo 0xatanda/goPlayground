@@ -25,7 +25,14 @@ func sendSMS(msg string) (float64, error) {
 
 func test(msgToCustomer, msgToSoupse string) {
 	defer fmt.Println("======================")
-
+	fmt.Println("Message for Customer: ", msgToCustomer)
+	fmt.Println("Message for Spouse: ", msgToSoupse)
+	totalCost, err := sendSMSToCouple(msgToCustomer, msgToSoupse)
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return
+	}
+	fmt.Printf("Total cost: $%.4f\n", totalCost)
 }
 
 func main() {
