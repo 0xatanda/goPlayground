@@ -16,7 +16,3 @@ func test(numMessage int) {
 	fmt.Println("Bulk send complete! cost = %.2f\n", cost)
 	fmt.Println("========================================")
 }
-
-func main() {
-	test(int(bulkSend()))
-}
