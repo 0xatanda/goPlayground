@@ -25,5 +25,5 @@ func greetingPrefix(language string) (prefix string) {
 	default:
 		prefix = EnglishPrefix
 	}
-	return
+	return prefix
 }
