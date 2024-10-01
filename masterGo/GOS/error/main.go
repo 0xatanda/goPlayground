@@ -7,7 +7,7 @@ import (
 
 func returnErr(a, b int) error {
 	if a == b {
-		err := errors.New("Error in returnError() func")
+		err := errors.New("error in returnError() func")
 		return err
 	} else {
 		return nil
