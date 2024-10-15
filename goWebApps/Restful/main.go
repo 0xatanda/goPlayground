@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
+
 	"github.com/gorilla/mux"
 )
 
@@ -26,11 +27,20 @@ const (
 var database *sql.DB
 
 type Page struct {
+	Id         int
 	Title      string
 	Content    template.HTML
 	RawContent string
 	Date       string
 	GUID       string
+	Comments   []Comment
+}
+
+type Comment struct {
+	Id          int
+	Name        string
+	Email       string
+	CommentText string
 }
 
 type JSONResponse struct {
@@ -90,6 +100,30 @@ func APICommentPost(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, jsonResp)
 }
 
+func APICommentPut(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		log.Println(err.Error())
+	}
+
+	vars := mux.Vars(r)
+	id := vars["id"]
+	fmt.Println(id)
+	name := r.FormValue("name")
+	email := r.FormValue("email")
+	comments := r.FormValue("comments")
+	res, err := database.Exec("UPDATE comments SET comment_name=?, comment_email=?, comment_text=? WHERE comment_id=?", name, email, comments, id)
+	fmt.Println(res)
+	if err != nil {
+		log.Println(err.Error())
+	}
+
+	var resp JSONResponse
+	jsonResp, _ := json.Marshal(resp)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintln(w, jsonResp)
+}
+
 func servePage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	pageGUID := vars["guid"]
@@ -104,6 +138,17 @@ func servePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(404), http.StatusNotFound)
 		log.Println("Couldn't get page:", err)
 		return
+	}
+
+	comments, err := database.Query("SELECT id, comment_name as Name, comment_email, comment_text FROM comments WHERE page_id=?", thisPage.Id)
+	if err != nil {
+		log.Println(err)
+	}
+
+	for comments.Next() {
+		var comment Comment
+		comments.Scan(&comment.Id, &comment.Name, &comment.Email, &comment.CommentText)
+		thisPage.Comments = append(thisPage.Comments, comment)
 	}
 
 	// Load template
@@ -171,7 +216,8 @@ func main() {
 	routes.HandleFunc("/page/{guid:[0-9a-zA\\-]+}", servePage)
 	routes.HandleFunc("/api/pages", APIPage).Methods("GET").Schemes("https")
 	routes.HandleFunc("/api/pages/{guid:[0-9a-zA\\-]+}", APIPage).Methods("GET").Schemes("https")
-	routes.HandleFunc("/api/comments", APICommentPost).Methods("POST").Schemes("https")
+	routes.HandleFunc("/api/comments", APICommentPost).Methods("POST")
+	routes.HandleFunc("/api/comments/{id:[\\w\\d\\-]+}", APICommentPut).Methods("PUT")
 
 	// Start the server
 	http.Handle("/", routes)
