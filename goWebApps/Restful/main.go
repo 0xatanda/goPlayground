@@ -72,6 +72,7 @@ func APIPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintln(w, string(APIOutput))
 }
+
 func APICommentPost(w http.ResponseWriter, r *http.Request) {
 	var commentAdded bool
 	err := r.ParseForm()
@@ -233,5 +234,4 @@ func main() {
 	}
 	tlsConf := tls.Config{Certificates: []tls.Certificate{certificates}}
 	tls.Listen("tcp", PORT, &tlsConf)
-
 }
