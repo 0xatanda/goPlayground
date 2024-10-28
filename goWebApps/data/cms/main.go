@@ -83,7 +83,7 @@ func ServeIndex(w http.ResponseWriter, r *http.Request) {
 
 func (p Page) TruncatedText() string {
 	chars := 0
-	for i, _ := range p.Content {
+	for i := range p.Content {
 		chars++
 		if chars > 150 {
 			return string(p.Content[:i]) + `...`
