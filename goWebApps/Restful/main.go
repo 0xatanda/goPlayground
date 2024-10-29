@@ -250,6 +250,7 @@ func RegisterPOST(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// generate hash password
 func weakPasswordHash(password string) []byte {
 	hash := sha1.New()
 	io.WriteString(hash, password)
