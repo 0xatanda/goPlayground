@@ -35,6 +35,19 @@ type Page struct {
 	Date       string
 	GUID       string
 	Comments   []Comment
+	Session    Session
+}
+
+type User struct {
+	Id   int
+	Name string
+}
+
+type Session struct {
+	Id              string
+	Authenticated   bool
+	Unauthenticated bool
+	User            User
 }
 
 type Cookie struct {
