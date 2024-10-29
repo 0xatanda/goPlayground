@@ -1,13 +1,16 @@
 package main
 
 import (
+	"crypto/sha1"
 	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -222,6 +225,35 @@ func (p Page) TruncatedText() string {
 		}
 	}
 	return string(p.Content)
+}
+
+func RegisterPOST(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		log.Fatal(err.Error)
+	}
+	name := r.FormValue("user_name")
+	email := r.FormValue("user_email")
+	pass := r.FormValue("user_password")
+	pageGUID := r.FormValue("referrer")
+	// pass2 := r.FormValue("user_password2")
+	gure := regexp.MustCompile("[^A-Za-z0-9]+")
+	guid := gure.ReplaceAllString(name, "")
+	password := weakPasswordHash(pass)
+	res, err := database.Exec("INSERT INTO users SET user_name=?, user_guid=?, user_email=?, user_password=?", name, guid, email,
+		password)
+	fmt.Println(res)
+	if err != nil {
+		fmt.Fprintln(w, err.Error)
+	} else {
+		http.Redirect(w, r, "/page/"+pageGUID, 301)
+	}
+}
+
+func weakPasswordHash(password string) []byte {
+	hash := sha1.New()
+	io.WriteString(hash, password)
+	return hash.Sum(nil)
 }
 
 func RedirIndex(w http.ResponseWriter, r *http.Request) {
