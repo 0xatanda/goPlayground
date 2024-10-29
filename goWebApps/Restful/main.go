@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 
@@ -34,6 +35,20 @@ type Page struct {
 	Date       string
 	GUID       string
 	Comments   []Comment
+}
+
+type Cookie struct {
+	Name       string
+	Value      string
+	Path       string
+	Domain     string
+	Expires    time.Time
+	MaxAge     int
+	RawExpires string
+	Secure     bool
+	HttpOnly   bool
+	Raw        string
+	Unparsed   []string
 }
 
 type Comment struct {
