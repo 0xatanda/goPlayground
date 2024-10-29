@@ -247,6 +247,8 @@ func main() {
 	routes.HandleFunc("/api/pages/{guid:[0-9a-zA\\-]+}", APIPage).Methods("GET").Schemes("https")
 	routes.HandleFunc("/api/comments", APICommentPost).Methods("POST")
 	routes.HandleFunc("/api/comments/{id:[\\w\\d\\-]+}", APICommentPut).Methods("PUT")
+	routes.HandleFunc("/register", RegisterPOST).Methods("POST").Schemes("https")
+	routes.HandleFunc("/login", LoginPOST).Methods("POST").Schemes("https")
 
 	// Start the server
 	http.Handle("/", routes)
