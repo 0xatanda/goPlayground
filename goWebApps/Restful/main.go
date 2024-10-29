@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -17,6 +19,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 )
 
 const (
@@ -29,6 +32,8 @@ const (
 )
 
 var database *sql.DB
+var sessionStore = sessions.NewCookieStore([]byte("our-social-network-application"))
+var UserSession Session
 
 type Page struct {
 	Id         int
@@ -230,7 +235,7 @@ func (p Page) TruncatedText() string {
 func RegisterPOST(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		log.Fatal(err.Error)
+		log.Fatal(err.Error())
 	}
 	name := r.FormValue("user_name")
 	email := r.FormValue("user_email")
@@ -244,9 +249,9 @@ func RegisterPOST(w http.ResponseWriter, r *http.Request) {
 		password)
 	fmt.Println(res)
 	if err != nil {
-		fmt.Fprintln(w, err.Error)
+		fmt.Fprintln(w, err.Error())
 	} else {
-		http.Redirect(w, r, "/page/"+pageGUID, 301)
+		http.Redirect(w, r, "/page/"+pageGUID, http.StatusMovedPermanently)
 	}
 }
 
@@ -259,6 +264,67 @@ func weakPasswordHash(password string) []byte {
 
 func RedirIndex(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/home", http.StatusPermanentRedirect)
+}
+
+func getSessionUID(sid string) int {
+	user := User{}
+	err := database.QueryRow("Select user_id FROM sessions WHERE session_id=?", sid).Scan(user.Id)
+	if err != nil {
+		fmt.Println(err.Error())
+		return 0
+	}
+	return user.Id
+}
+
+func updateSession(sid string, uid int) {
+	const timeFmt = "2006-01-02T15:04:05.999999999"
+	tstsmp := time.Now().Format(timeFmt)
+	_, err := database.Exec("INSERT INTO sessions SET session_id=?, user_id=?, session_update=?, ON DUPLICATE KEY UPDATE user_id=?, session_update=?", sid, uid, tstsmp, uid, tstsmp)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+}
+
+func generateSessionId() string {
+	sid := make([]byte, 24)
+	_, err := io.ReadFull(rand.Reader, sid)
+	if err != nil {
+		log.Fatal("Could not generate session id")
+	}
+	return base64.URLEncoding.EncodeToString(sid)
+}
+
+func validateSession(w http.ResponseWriter, r *http.Request) {
+	session, _ := sessionStore.Get(r, "app-session")
+	if sid, valid := session.Values["sid"]; valid {
+		currentUID := getSessionUID(sid.(string))
+		updateSession(sid.(string), currentUID)
+		UserSession.Id = string(currentUID)
+	} else {
+		newsID := generateSessionId()
+		session.Values["sid"] = newsID
+		session.Save(r, w)
+		UserSession.Id = newsID
+		updateSession(newsID, 0)
+	}
+	fmt.Println(session.ID)
+}
+
+func LoginPOST(w http.ResponseWriter, r *http.Request) {
+	validateSession(w, r)
+	u := User{}
+	name := r.FormValue("user_name")
+	pass := r.FormValue("user_password")
+	password := weakPasswordHash(pass)
+	err := database.QueryRow("SELECT user_id, user_name FROM users WHERE user_name=? and user_password=?", name, password).Scan(&u.Id, u.Name)
+	if err != nil {
+		fmt.Fprintln(w, err.Error())
+		u.Id = 0
+		u.Name = " "
+	} else {
+		updateSession(UserSession.Id, u.Id)
+		fmt.Fprintln(w, u.Name)
+	}
 }
 
 func main() {
