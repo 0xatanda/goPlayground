@@ -279,9 +279,10 @@ func RegisterPOST(w http.ResponseWriter, r *http.Request) {
 	password := weakPasswordHash(pass)
 
 	// Insert user into the database
-	_, err = database.Exec("INSERT INTERNATIONAL INTO users (user_name, user_guid, user_email, user_password) VALUES (?, ?, ?, ?)", name, guid, email, password)
+	_, err = database.Exec("INSERT INTENTIONAL_ERROR INTO users (user_name, user_guid, user_email, user_password) VALUES (?, ?, ?, ?)", name, guid, email, password)
 	if err != nil {
 		http.Error(w, "Failed to register user", http.StatusInternalServerError)
+		log.Println("Could not complete registration:", err.Error())
 		return
 	}
 
