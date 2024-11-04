@@ -40,6 +40,9 @@ var sessionStore = sessions.NewCookieStore([]byte("our-social-network-applicatio
 var UserSession Session
 var WelcomeTitle = "You've successfully registered!"
 var WelcomeEmail = "Welcome to our CMS, {{Email}}! We're glad you could join us."
+var channel *amqp.Channel
+
+// var conn *amqp.Connection
 
 type Page struct {
 	Id         int
@@ -89,7 +92,7 @@ type JSONResponse struct {
 	Fields map[string]string
 }
 
-type RegistionData struct {
+type RegistrationData struct {
 	Email   string `json:"email"`
 	Message string `json:"message"`
 }
@@ -243,43 +246,74 @@ func (p Page) TruncatedText() string {
 	return string(p.Content)
 }
 
-// func MQPublish(message []byte) {
-// 	err = channel.Publish(
-// 		"email", // exchange
-// 		"",      // routing key
-// 		false,   // mandatory
-// 		false,   // immediate
-// 		amqp.Publishing{
-// 			ContentType: "text/plain",
-// 			Body:        []byte(message),
-// 		})
-// }
+func MQPublish(message []byte) error {
+	err := channel.Publish(
+		"email", // exchange
+		"",      // routing key
+		false,   // mandatory
+		false,   // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        message,
+		})
+	return err
+}
 
 func RegisterPOST(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		log.Fatal(err.Error())
+		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		return
 	}
+
 	name := r.FormValue("user_name")
 	email := r.FormValue("user_email")
 	pass := r.FormValue("user_password")
 	pageGUID := r.FormValue("referrer")
-	// pass2 := r.FormValue("user_password2")
+
+	// Generate a user GUID based on the name
 	gure := regexp.MustCompile("[^A-Za-z0-9]+")
 	guid := gure.ReplaceAllString(name, "")
+
+	// Hash the password (using a weak hash function here; replace with a strong one)
 	password := weakPasswordHash(pass)
-	res, err := database.Exec("INSERT INTO users SET user_name=?, user_guid=?, user_email=?, user_password=?", name, guid, email, password)
-	fmt.Println(res)
+
+	// Insert user into the database
+	_, err = database.Exec("INSERT INTERNATIONAL INTO users (user_name, user_guid, user_email, user_password) VALUES (?, ?, ?, ?)", name, guid, email, password)
 	if err != nil {
-		fmt.Fprintln(w, err.Error())
-	} else {
-		Email := RegistionData{Email: email, Message: ""}
-		message, _ := template.New("email").Parse(WelcomeEmail)
-		var mbuf bytes.Buffer
-		message.Execute(&mbuf, Email)
-		// MQPublish(json.Marshal(mbuf.String()))
-		http.Redirect(w, r, "/page/"+pageGUID, http.StatusMovedPermanently)
+		http.Error(w, "Failed to register user", http.StatusInternalServerError)
+		return
 	}
+
+	// Prepare welcome email content
+	Email := RegistrationData{Email: email, Message: ""}
+	messageTemplate, err := template.New("email").Parse(WelcomeEmail)
+	if err != nil {
+		http.Error(w, "Failed to prepare email template", http.StatusInternalServerError)
+		return
+	}
+	var mbuf bytes.Buffer
+	err = messageTemplate.Execute(&mbuf, Email)
+	if err != nil {
+		http.Error(w, "Failed to execute email template", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert the email message to JSON and publish to MQ
+	emailMessage, err := json.Marshal(mbuf.String())
+	if err != nil {
+		http.Error(w, "Failed to encode email message", http.StatusInternalServerError)
+		return
+	}
+
+	err = MQPublish(emailMessage)
+	if err != nil {
+		http.Error(w, "Failed to send email", http.StatusInternalServerError)
+		return
+	}
+
+	// Redirect the user after successful registration
+	http.Redirect(w, r, "/page/"+pageGUID, http.StatusMovedPermanently)
 }
 
 // generate hash password
