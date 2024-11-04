@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
@@ -17,23 +18,28 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/streadway/amqp"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 )
 
 const (
-	PORT    = ":8080"
 	DBHost  = "127.0.0.1"
 	DBPort  = ":3306"
 	DBUser  = "root"
 	DBPass  = "ethereum"
 	DBDbase = "cms"
+	PORT    = ":8080"
+	MQHost  = "127.0.0.1"
+	MQPort  = ":5672"
 )
 
 var database *sql.DB
 var sessionStore = sessions.NewCookieStore([]byte("our-social-network-application"))
 var UserSession Session
+var WelcomeTitle = "You've successfully registered!"
+var WelcomeEmail = "Welcome to our CMS, {{Email}}! We're glad you could join us."
 
 type Page struct {
 	Id         int
@@ -81,6 +87,11 @@ type Comment struct {
 
 type JSONResponse struct {
 	Fields map[string]string
+}
+
+type RegistionData struct {
+	Email   string `json:"email"`
+	Message string `json:"message"`
 }
 
 func APIPage(w http.ResponseWriter, r *http.Request) {
@@ -232,6 +243,18 @@ func (p Page) TruncatedText() string {
 	return string(p.Content)
 }
 
+// func MQPublish(message []byte) {
+// 	err = channel.Publish(
+// 		"email", // exchange
+// 		"",      // routing key
+// 		false,   // mandatory
+// 		false,   // immediate
+// 		amqp.Publishing{
+// 			ContentType: "text/plain",
+// 			Body:        []byte(message),
+// 		})
+// }
+
 func RegisterPOST(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
@@ -245,12 +268,16 @@ func RegisterPOST(w http.ResponseWriter, r *http.Request) {
 	gure := regexp.MustCompile("[^A-Za-z0-9]+")
 	guid := gure.ReplaceAllString(name, "")
 	password := weakPasswordHash(pass)
-	res, err := database.Exec("INSERT INTO users SET user_name=?, user_guid=?, user_email=?, user_password=?", name, guid, email,
-		password)
+	res, err := database.Exec("INSERT INTO users SET user_name=?, user_guid=?, user_email=?, user_password=?", name, guid, email, password)
 	fmt.Println(res)
 	if err != nil {
 		fmt.Fprintln(w, err.Error())
 	} else {
+		Email := RegistionData{Email: email, Message: ""}
+		message, _ := template.New("email").Parse(WelcomeEmail)
+		var mbuf bytes.Buffer
+		message.Execute(&mbuf, Email)
+		// MQPublish(json.Marshal(mbuf.String()))
 		http.Redirect(w, r, "/page/"+pageGUID, http.StatusMovedPermanently)
 	}
 }
@@ -325,6 +352,23 @@ func LoginPOST(w http.ResponseWriter, r *http.Request) {
 		updateSession(UserSession.Id, u.Id)
 		fmt.Fprintln(w, u.Name)
 	}
+}
+
+func MQConnect() (*amqp.Connection, *amqp.Channel, error) {
+	url := "amqp://" + MQHost + MQPort
+	conn, err := amqp.Dial(url)
+	if err != nil {
+		return nil, nil, err
+	}
+	channel, err := conn.Channel()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if _, err := channel.QueueDeclare("", false, true, false, false, nil); err != nil {
+		return nil, nil, err
+	}
+	return conn, channel, nil
 }
 
 func main() {
