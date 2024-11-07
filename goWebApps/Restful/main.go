@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
-	"crypto/tls"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -15,6 +14,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -25,14 +25,15 @@ import (
 )
 
 const (
-	DBHost  = "127.0.0.1"
-	DBPort  = ":3306"
-	DBUser  = "root"
-	DBPass  = "ethereum"
-	DBDbase = "cms"
-	PORT    = ":8080"
-	MQHost  = "127.0.0.1"
-	MQPort  = ":5672"
+	DBHost     = "127.0.0.1"
+	DBPort     = ":3306"
+	DBUser     = "root"
+	DBPass     = "ethereum"
+	DBDbase    = "cms"
+	PORT       = ":8080"
+	MQHost     = "127.0.0.1"
+	MQPort     = ":5672"
+	SECUREPORT = ":443"
 )
 
 var database *sql.DB
@@ -41,6 +42,7 @@ var UserSession Session
 var WelcomeTitle = "You've successfully registered!"
 var WelcomeEmail = "Welcome to our CMS, {{Email}}! We're glad you could join us."
 var channel *amqp.Channel
+var serverName string
 
 // var conn *amqp.Connection
 
@@ -406,6 +408,12 @@ func MQConnect() (*amqp.Connection, *amqp.Channel, error) {
 	return conn, channel, nil
 }
 
+func redirectNonSecure(w http.ResponseWriter, r *http.Request) {
+	log.Println("Non-secure request initiated, redirecting.")
+	redirectURL := "http://" + serverName + r.RequestURI
+	http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
+}
+
 func main() {
 	dbConn := fmt.Sprintf("%s:%s@tcp(%s)/%s", DBUser, DBPass, DBHost, DBDbase)
 	db, err := sql.Open("mysql", dbConn)
@@ -428,18 +436,24 @@ func main() {
 	routes.HandleFunc("/register", RegisterPOST).Methods("POST").Schemes("https")
 	routes.HandleFunc("/login", LoginPOST).Methods("POST").Schemes("https")
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	// Start the server
 	http.Handle("/", routes)
 	fmt.Println("Server is running on port", PORT)
-	err = http.ListenAndServe(PORT, nil)
-	if err != nil {
-		log.Fatal("Server error:", err)
-	}
+	go func() {
+		err = http.ListenAndServe(PORT, http.HandlerFunc(redirectNonSecure))
+		if err != nil {
+			log.Fatal("Server error:", err)
+		}
+		wg.Done()
+	}()
 
-	certificates, err := tls.LoadX509KeyPair("cert.pem", "key.pem")
-	if err != nil {
-		log.Fatal("Error msg: ", err)
-	}
-	tlsConf := tls.Config{Certificates: []tls.Certificate{certificates}}
-	tls.Listen("tcp", PORT, &tlsConf)
+	wg.Add(1)
+	go func() {
+		http.ListenAndServeTLS(SECUREPORT, "cert.pem", "key.pem", routes)
+		wg.Done()
+	}()
+	wg.Wait()
 }
